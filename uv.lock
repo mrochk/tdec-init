@@ -1348,6 +1348,7 @@ dependencies = [
     { name = "jax" },
     { name = "matplotlib" },
     { name = "seaborn" },
+    { name = "six" },
 ]
 
 [package.optional-dependencies]
@@ -1387,6 +1388,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "seaborn" },
+    { name = "six" },
 ]
 provides-extras = ["dev", "test", "visualize"]
 
@@ -3143,6 +3145,7 @@ name = "tdec-init"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "decoupling" },
     { name = "equinox" },
     { name = "gymnax", extra = ["visualize"] },
@@ -3154,6 +3157,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.5.0" },
     { name = "decoupling", specifier = "==0.0.9" },
     { name = "equinox", specifier = ">=0.13.8" },
     { name = "gymnax", extras = ["visualize"], editable = "gymnax" },

@@ -6,6 +6,7 @@ from tqdm import tqdm
 from tdec_init.model import MLP
 from tdec_init.planner import RandomShootingPlanner
 from tdec_init.initialize import Initializer
+from tdec_init.collect import make_delta
 from tdec_init.utils import *
 
 def unstack(states) -> list:
@@ -120,3 +121,13 @@ class ModelBasedAlgorithm:
         _, _, rewards, valid, states = self.episode(self.model, key)
         num_steps = int(valid.sum())
         return rewards[:num_steps], unstack(states)[:num_steps]
+
+class Oracle(ModelBasedAlgorithm):
+    '''no model to train'''
+
+    def run(self, num_episodes: int):
+        returns = []
+        for episode in range(num_episodes):
+            _, _, rewards, valid, _ = self.episode(self.model, jax.random.fold_in(self.episode_key, episode))
+            returns.append(float((rewards * valid).sum()))
+        return returns, [float('nan')] * num_episodes

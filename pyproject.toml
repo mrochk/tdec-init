@@ -11,15 +11,12 @@ dependencies = [
     "decoupling==0.0.9",
     "equinox>=0.13.8",
     "jax==0.12.0.1",
-    "jax==0.12.0.1",
     "jaxtyping>=0.3.11",
     "optax>=0.2.8",
     "tqdm>=4.70.1",
     "gymnax[visualize]",
+    "click>=8.5.0",
 ]
-
-[project.scripts]
-tdec-init = "tdec_init:main"
 
 [build-system]
 requires = ["uv_build>=0.12.14,<0.13.0"]

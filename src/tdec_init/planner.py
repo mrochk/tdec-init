@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 import jax, jax.numpy as jnp
-import equinox as eqx
 
 from tdec_init.model import MLP
+from tdec_init.collect import make_delta
 from tdec_init.utils import pack, unpack
 
 class Planner(ABC):
@@ -50,3 +50,10 @@ class RandomShootingPlanner(Planner):
 
         # return the action that led to the highest return
         return actions[jnp.argmax(returns), 0]
+
+class OraclePlanner(RandomShootingPlanner):
+    '''plans with the true dynamics instead of the world model'''
+
+    def plan(self, model, state, key):
+        f = make_delta(self.env, self.params, self.fields)
+        return super().plan(lambda x: f(state, x, jax.random.key(0)), state, key)
