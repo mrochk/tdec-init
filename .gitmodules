@@ -1,0 +1,3 @@
+[submodule "gymnax"]
+	path = gymnax
+	url = git@github.com:mrochk/gymnax.git
