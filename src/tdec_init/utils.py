@@ -1,7 +1,7 @@
 import jax, jax.numpy as jnp
 from jaxtyping import Array
 
-from tdec_init.envs_info import STATE_FIELDS, STATE_BOUNDS, ANGLE_FIELDS
+from tdec_init.envs_info import STATE_FIELDS, ANGLE_FIELDS
 
 def pack(state, fields) -> Array:
     '''flatten the state obj into a vector'''
