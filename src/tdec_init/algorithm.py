@@ -70,9 +70,9 @@ class ModelBasedAlgorithm:
             key_plan, key_step = jax.random.split(key)
             action = self.planner.plan(model, state, key_plan)
             _, next_state, reward, terminated, _ = self.env.step_env(key_step, state, action, self.params)
-            s = pack(state, self.fields)
+            s = state2vec(state, self.fields)
             x = jnp.concatenate([s, jnp.ravel(action)])
-            y = pack(next_state, self.fields) - s
+            y = state2vec(next_state, self.fields) - s
             return (next_state, done | terminated), (x, y, reward, ~done, state)
 
         key_reset, key_steps = jax.random.split(key)

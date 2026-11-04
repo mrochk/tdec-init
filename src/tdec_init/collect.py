@@ -9,10 +9,10 @@ def make_delta(env, params, fields):
     action_shape = env.action_space(params).shape
 
     def delta(state, x, key):
-        state_size = pack(state, fields).size
+        state_size = state2vec(state, fields).size
         state_vec, action_vec = x[:state_size], x[state_size:].reshape(action_shape)
-        _, next_state, *_ = env.step_env(key, unpack(state, fields, state_vec), action_vec, params)
-        return pack(next_state, fields) - state_vec
+        _, next_state, *_ = env.step_env(key, vec2state(state, fields, state_vec), action_vec, params)
+        return state2vec(next_state, fields) - state_vec
 
     return delta
 
@@ -37,7 +37,7 @@ def collect_information(
 
         action = action_space.sample(key_action) # sample uniformly
 
-        x = jnp.concatenate([pack(state, fields), jnp.ravel(action)])
+        x = jnp.concatenate([state2vec(state, fields), jnp.ravel(action)])
 
         # env.step forwards the first half of its key to step_env
         key_env = split(key_step)[0]

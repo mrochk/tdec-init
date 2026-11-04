@@ -7,7 +7,7 @@ import gymnax
 
 from tdec_init.initialize import *
 from tdec_init import ModelBasedAlgorithm, RandomShootingPlanner, collect_information
-from tdec_init.utils import angle_mask, get_fields, pack, wrap_angles
+from tdec_init.utils import angle_mask, get_fields, state2vec, wrap_angles
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
 
@@ -30,7 +30,7 @@ def trajectories(env, params, fields, key, num: int, horizon: int):
         key_action, key_step = jax.random.split(key)
         action = action_space.sample(key_action)
         _, next_state, *_ = env.step_env(key_step, state, action, params)
-        return next_state, (pack(state, fields), jnp.ravel(action))
+        return next_state, (state2vec(state, fields), jnp.ravel(action))
 
     def rollout(key):
         key_reset, key_steps = jax.random.split(key)

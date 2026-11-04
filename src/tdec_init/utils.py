@@ -3,11 +3,11 @@ from jaxtyping import Array
 
 from tdec_init.envs_info import STATE_FIELDS, ANGLE_FIELDS
 
-def pack(state, fields) -> Array:
+def state2vec(state, fields) -> Array:
     '''flatten the state obj into a vector'''
     return jnp.concatenate([jnp.ravel(getattr(state, f)) for f in fields])
 
-def unpack(state, fields, vector):
+def vec2state(state, fields, vector):
     '''convert vector back to state obj'''
     updates, i = {}, 0
     for f in fields:

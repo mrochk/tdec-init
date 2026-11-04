@@ -3,7 +3,7 @@ import jax, jax.numpy as jnp
 
 from tdec_init.model import MLP
 from tdec_init.collect import make_delta
-from tdec_init.utils import pack, unpack
+from tdec_init.utils import state2vec, vec2state
 
 class Planner(ABC):
     def __init__(self, candidates, horizon):
@@ -18,7 +18,7 @@ class Planner(ABC):
     def _reward(self, state, s, action):
         '''known reward and termination'''
         key = jax.random.key(0)
-        _, _, reward, done, _ = self.env.step_env(key, unpack(state, self.fields, s), action, self.params)
+        _, _, reward, done, _ = self.env.step_env(key, vec2state(state, self.fields, s), action, self.params)
         return reward, done
 
     @abstractmethod
@@ -42,7 +42,7 @@ class RandomShootingPlanner(Planner):
                 reward = jnp.where(done, 0.0, reward)
                 return (s + model(jnp.concatenate([s, jnp.ravel(action)])), done | terminal), reward
 
-            _, rewards = jax.lax.scan(step, (pack(state, self.fields), jnp.array(False)), actions)
+            _, rewards = jax.lax.scan(step, (state2vec(state, self.fields), jnp.array(False)), actions)
 
             return jnp.sum(rewards)
 
