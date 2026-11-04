@@ -1,16 +1,15 @@
 import optax
-import jax, jax.numpy as jnp
 import equinox as eqx
 from tqdm import tqdm
+import jax, jax.numpy as jnp
 
-from tdec_init.model import MLP
 from tdec_init.planner import RandomShootingPlanner
 from tdec_init.initialize import Initializer
-from tdec_init.collect import make_delta
+from tdec_init.model import MLP, loss
 from tdec_init.utils import *
 
 def unstack(states) -> list:
-    '''split stacked states into the list of states expected by gymnax.visualize.Visualizer'''
+    '''split stacked states into the list of states expected by visualizer'''
     return [jax.tree.map(lambda x: x[i], states) for i in range(len(states.time))]
 
 class ModelBasedAlgorithm:
@@ -49,27 +48,17 @@ class ModelBasedAlgorithm:
         self.optimizer = optax.adam(lr)
         self.opt_state = self.optimizer.init(eqx.filter(self.model, eqx.is_inexact_array))
 
-    @staticmethod
-    def _loss(model: MLP, inputs, outputs):
-        scale = jax.lax.stop_gradient(model.scale)
-        predictions = jax.vmap(model)(inputs)
-        errors = (predictions - outputs) / scale
-        return jnp.mean(errors**2)
-
     @eqx.filter_jit
     def _update_model(self, model, opt_state, inputs, outputs):
-        grads = eqx.filter_grad(self._loss)(model, inputs, outputs)
+        grads = eqx.filter_grad(loss)(model, inputs, outputs)
         updates, opt_state = self.optimizer.update(grads, opt_state)
         return eqx.apply_updates(model, updates), opt_state
 
     def _train_model(self):
         for _ in range(self.train_steps):
             self.key, key = jax.random.split(self.key)
-
             index = jax.random.choice(key, self.inputs.shape[0], (self.batch_size,))
-            inputs = self.inputs[index]
-            outputs = self.outputs[index]
-
+            inputs, outputs = self.inputs[index], self.outputs[index]
             self.model, self.opt_state = self._update_model(self.model, self.opt_state, inputs, outputs)
 
     @eqx.filter_jit
@@ -124,7 +113,6 @@ class ModelBasedAlgorithm:
 
 class Oracle(ModelBasedAlgorithm):
     '''no model to train'''
-
     def run(self, num_episodes: int):
         returns = []
         for episode in range(num_episodes):

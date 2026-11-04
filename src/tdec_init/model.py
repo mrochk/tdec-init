@@ -46,3 +46,9 @@ class MLP(eqx.Module):
         return self.W1 @ self.activations(self.W0 @ x_wrapped + self.b0) + self.b1
 
     def __call__(self, x): return self._normalized(x) * stop_gradient(self.scale)
+
+def loss(model: MLP, inputs, outputs):
+    scale = jax.lax.stop_gradient(model.scale)
+    predictions = jax.vmap(model)(inputs)
+    errors = (predictions - outputs) / scale
+    return jnp.mean(errors**2)

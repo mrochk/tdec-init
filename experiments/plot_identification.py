@@ -78,7 +78,7 @@ def paper_save(fig, name: str, output: str = OUTPUT):
     os.makedirs(output, exist_ok=True)
     path = os.path.join(output, f'{name}.pdf')
     fig.savefig(path, bbox_inches='tight', pad_inches=0.01)
-    fig.savefig(path.replace('.pdf', '.png'), dpi=300, bbox_inches='tight', pad_inches=0.01)
+    #fig.savefig(path.replace('.pdf', '.png'), dpi=300, bbox_inches='tight', pad_inches=0.01)
     plt.close(fig)
     plt.rcdefaults()
     print('saved', path)

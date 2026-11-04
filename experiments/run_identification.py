@@ -11,8 +11,8 @@ from tdec_init.utils import angle_mask, get_fields, pack, wrap_angles
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
 
-SEEDS = range(5)
-NUM_ENVS = [1, 2, 5, 10, 20, 50]
+SEEDS = range(1)
+NUM_ENVS = [1, 2, 5, 10, 20, 50] # TODO change to have more env diversity in low-data regime
 NUM_STEPS = 10
 TRAIN_STEPS = [0, 10000]
 
