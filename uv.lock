@@ -3151,7 +3151,10 @@ dependencies = [
     { name = "gymnax", extra = ["visualize"] },
     { name = "jax" },
     { name = "jaxtyping" },
+    { name = "matplotlib" },
     { name = "optax" },
+    { name = "pandas" },
+    { name = "seaborn" },
     { name = "tqdm" },
 ]
 
@@ -3163,7 +3166,10 @@ requires-dist = [
     { name = "gymnax", extras = ["visualize"], editable = "gymnax" },
     { name = "jax", specifier = "==0.12.0.1" },
     { name = "jaxtyping", specifier = ">=0.3.11" },
+    { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "optax", specifier = ">=0.2.8" },
+    { name = "pandas", specifier = ">=3.1.0" },
+    { name = "seaborn", specifier = ">=0.13.2" },
     { name = "tqdm", specifier = ">=4.70.1" },
 ]
 

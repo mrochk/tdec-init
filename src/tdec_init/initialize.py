@@ -50,7 +50,7 @@ class RandomInitializer(Initializer):
 
         return MLP(W0, W1, jax.nn.gelu, out_scale, self.angles_mask)
 
-class DecouplingInitializer(Initializer):
+class TDec_Init(Initializer):
     '''weights and frozen spline internals from the decoupling of the jacobians'''
     name = 'decoupling'
 
@@ -166,7 +166,7 @@ class SobolevHeldoutInitializer(ValuesHeldoutInitializer):
 
 INITIALIZERS = [
     RandomInitializer,
-    DecouplingInitializer,
+    TDec_Init,
     ValuesInitializer,
     SobolevInitializer,
     ValuesHeldoutInitializer,

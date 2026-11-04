@@ -1,119 +1,114 @@
-import warnings; warnings.simplefilter('ignore')
+import os, sys
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+from matplotlib.offsetbox import HPacker, TextArea
 
-import csv, os, click
-import jax, jax.numpy as jnp
-import equinox as eqx
-import gymnax
+from config import *
 
-from tdec_init.initialize import *
-from tdec_init import ModelBasedAlgorithm, collect_information
-from tdec_init.utils import angle_mask, get_fields, pack, wrap_angles
+RESULTS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), 'results', 'init.csv')
+OUTPUT = os.path.join(os.path.dirname(RESULTS), 'plots')
 
-from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
+def main():
+    df = pd.read_csv(RESULTS)
+    df = df[df.env.isin(PAPER_ENVS)]
 
-SEEDS = range(10)
-NUM_ENVS = [1, 2, 5, 10, 20, 50]
-NUM_STEPS = 10
-TRAIN_STEPS = [0, 10000]
+    report_missing(df, ['N'])
+    for metric in METRICS: paper(df, metric)
 
-NUM_TEST_ENVS, NUM_TEST_STEPS = 500, NUM_STEPS # one-step test set
-NUM_ROLLOUTS, ROLLOUT_HORIZON = 100, 20 # multi-step test set
+def report_missing(df, group: list):
+    '''print the runs with fewer seeds than their env, the failed decouplings are skipped and have no rows'''
+    seeds = df.groupby('env').seed.nunique()
+    runs = df.groupby(['env', *group, 'init']).seed.nunique()
+    missing = runs[runs < seeds.reindex(runs.index.get_level_values('env')).to_numpy()]
+    if len(missing): print('runs with missing seeds (number of seeds left):', missing.to_string(), sep='\n')
 
-RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'init.csv')
-COLUMNS = ['env', 'seed', 'N', 'init', 'train_steps', 'onestep', 'jacobian', 'rollout', 'failed', 'pretrain_steps']
+def best_of(df, group: list, metric: str, agg: str = 'median', higher: bool = False):
+    '''the rows of the best variant of each method of BEST_OF per group (by the agg of metric), renamed to the method'''
+    out = [df[~df.init.isin(sum(BEST_OF.values(), []))]]
+    for method, variants in BEST_OF.items():
+        rows = df[df.init.isin(variants)]
+        if rows.empty: continue
+        score = rows.groupby(group + ['init'])[metric].agg(agg)
+        best = pd.DataFrame((score.groupby(group).idxmax() if higher else score.groupby(group).idxmin()).tolist(), columns=group + ['init'])
+        print(f'best {method} for {metric}:', best.groupby(group[:-1] or group).init.agg(' '.join).to_string(), sep='\n')
+        out.append(rows.merge(best).assign(init=method))
+    return pd.concat(out)
 
-def trajectories(env, params, fields, key, num: int, horizon: int):
-    '''random action trajectories from the initial states, without resets, returns the states (num, horizon + 1, n) and actions (num, horizon, k)'''
-    action_space = env.action_space(params)
+def paper_line(ax, groups, init: str, label: str):
+    '''median line and interquartile band of the grouped values of an initialization, nothing if it has no runs'''
+    if groups.ngroups == 0: return
+    stats = groups.quantile([0.25, 0.5, 0.75]).unstack()
+    color = COLORS[init]
+    ax.fill_between(stats.index, stats[0.25], stats[0.75], color=color, alpha=0.15, linewidth=0)
+    ax.plot(stats.index, stats[0.5], color=color, dashes=PAPER_STYLE[init][0], marker=PAPER_STYLE[init][1], markersize=3.5,
+            linewidth=1.6 if init == 'decoupling' else 1.2, label=label, zorder=3 if init == 'decoupling' else 2)
 
-    def step(state, key):
-        key_action, key_step = jax.random.split(key)
-        action = action_space.sample(key_action)
-        _, next_state, *_ = env.step_env(key_step, state, action, params)
-        return next_state, (pack(state, fields), jnp.ravel(action))
+def legend_entries(fig):
+    '''the handles and labels of all the axes without repeats, an env without results has none'''
+    entries = {}
+    for ax in fig.axes:
+        for handle, label in zip(*ax.get_legend_handles_labels()): entries.setdefault(label, handle)
+    return list(entries.values()), list(entries)
 
-    def rollout(key):
-        key_reset, key_steps = jax.random.split(key)
-        _, state = env.reset(key_reset, params)
-        _, (S, A) = jax.lax.scan(step, state, jax.random.split(key_steps, horizon + 1))
-        return S, A[:-1]
+def sans_fonts():
+    '''the fonts of SANS_FONTS that are installed, matplotlib warns for each missing one'''
+    installed = {font.name for font in font_manager.fontManager.ttflist}
+    return [font for font in SANS_FONTS if font in installed] or ['sans-serif']
 
-    return jax.jit(jax.vmap(rollout))(jax.random.split(key, num))
+def paper_legend(fig, handles, labels):
+    '''one legend above the plots, the method names of SANS in sans serif and of SMALLCAPS in small caps'''
+    legend = fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False, bbox_to_anchor=(0.5, 1.0))
+    for text in legend.get_texts():
+        if text.get_text() in SANS: text.set_fontfamily(sans_fonts())
 
-@eqx.filter_jit
-def evaluate(model, test, S, A, mask):
-    '''normalized errors of the one-step predictions, of their jacobians and of the rollouts'''
-    var = jnp.var(test.outputs, axis=0) + 1e-8
-    onestep = jnp.mean((jax.vmap(model)(test.inputs) - test.outputs) ** 2 / var)
+    # matplotlib has no small caps: the first letter at full size, the others in capitals at 80%, on the same baseline
+    size = plt.rcParams['legend.fontsize']
+    for column in legend._legend_handle_box.get_children():
+        for item in column.get_children():
+            handle, label = item.get_children()
+            if label.get_text() not in SMALLCAPS: continue
+            word = label.get_text()
+            item._children[1] = HPacker(pad=0, sep=0, align='baseline', children=[
+                TextArea(word[0], textprops=dict(fontsize=size)), TextArea(word[1:].upper(), textprops=dict(fontsize=0.8 * size))])
 
-    J, Jhat = test.jacobians.transpose(2, 0, 1), jax.vmap(jax.jacfwd(model))(test.inputs)
-    jacobian = jnp.mean((Jhat - J) ** 2 / var[:, None]) / jnp.mean(J ** 2 / var[:, None])
+def paper_save(fig, name: str, output: str = OUTPUT):
+    '''save a paper figure as pdf and png'''
+    os.makedirs(output, exist_ok=True)
+    path = os.path.join(output, f'{name}.pdf')
+    fig.savefig(path, bbox_inches='tight', pad_inches=0.01)
+    fig.savefig(path.replace('.pdf', '.png'), dpi=300, bbox_inches='tight', pad_inches=0.01)
+    plt.close(fig)
+    plt.rcdefaults()
+    print('saved', path)
 
-    def rollout(s, actions):
-        step = lambda s, a: (s + model(jnp.concatenate([s, a])),) * 2
-        return jax.lax.scan(step, s, actions)[1]
+def paper(df, metric: str):
+    '''error against N, envs as columns, at initialization and after training as rows'''
+    plt.rcParams.update(PAPER_RC)
+    Ns = sorted(df.N.unique())
+    df = best_of(df, ['env', 'train_steps', 'N'], metric)
 
-    n = S.shape[-1]
-    Shat = jax.vmap(rollout)(S[:, 0], A)
-    std = jnp.std(test.inputs[:, :n], axis=0) + 1e-8
-    rollout = jnp.mean((wrap_angles(Shat - S[:, 1:], mask[:n]) / std) ** 2)
+    fig, axes = plt.subplots(len(PAPER_STEPS), len(PAPER_ENVS), figsize=(TEXT_WIDTH, 2.6), sharex=True, squeeze=False)
+    for row, steps in enumerate(PAPER_STEPS):
+        for col, env in enumerate(PAPER_ENVS):
+            ax = axes[row, col]
+            for init, label in PAPER_INITS.items():
+                paper_line(ax, df[(df.env == env) & (df.train_steps == steps) & (df.init == init)].groupby('N')[metric], init, label)
+            ax.set(xscale='log', yscale='log')
+            ax.set_xticks(Ns, ['' if n == 200 else str(n) for n in Ns]) # no room for 200 next to 100
+            ax.minorticks_off()
+            ax.yaxis.set_major_locator(plt.LogLocator(numticks=5))
+            ax.grid(True, color='#e6e5e0', linewidth=0.5)
+            ax.tick_params(length=2, pad=1.5)
+            if row == 0: ax.set_title(ENV_LABELS[env])
+            if row == len(PAPER_STEPS) - 1: ax.set_xlabel('$N$', labelpad=1)
+            if col == 0: ax.set_ylabel(f'{METRICS[metric]}\n{PAPER_STEPS[steps]}')
 
-    return onestep, jacobian, rollout
+    paper_legend(fig, *legend_entries(fig))
+    sns.despine(fig)
+    fig.tight_layout(rect=(0, 0, 1, 0.955), h_pad=0.4, w_pad=0.4)
 
-@click.command()
-@click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False), help='env to run, repeat for several (default all)')
-def main(envs):
-    os.makedirs(os.path.dirname(RESULTS), exist_ok=True)
-
-    for env_name in [ENVS[e] for e in envs or ENVS]:
-        hp = PARAMS[env_name]
-        env, env_params = gymnax.make(env_name)
-        env_params = env_params.replace(**hp.get('env_params', {}))
-        fields, mask = get_fields(env), angle_mask(env, params=env_params)
-
-        for seed in SEEDS:
-            # a rerun replaces the rows of this env and seed, the others are kept
-            clear_rows(RESULTS, COLUMNS, env_name, seed)
-            key_train, key_test, key_rollouts, key_init = jax.random.split(jax.random.fold_in(jax.random.key(SEED), seed), 4)
-
-            # the test sets are shared by all the N and initializations of a seed
-            test = collect_information(env, key_test, NUM_TEST_ENVS, NUM_TEST_STEPS, params=env_params)
-            S, A = trajectories(env, env_params, fields, key_rollouts, NUM_ROLLOUTS, ROLLOUT_HORIZON)
-
-            for num_envs in NUM_ENVS:
-                samples = collect_information(env, key_train, num_envs, NUM_STEPS, params=env_params)
-                N = samples.inputs.shape[0]
-
-                args = (key_init, hp['num_hidden'], samples, mask)
-                initializers = [
-                    RandomInitializer(*args),
-                    DecouplingInitializer(*args),
-                    *[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                    *[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                    ValuesHeldoutInitializer(*args),
-                    SobolevHeldoutInitializer(*args),
-                ]
-
-                for initializer in initializers:
-
-                    # the algorithm is only used to train the model on the samples
-                    make = lambda initializer: ModelBasedAlgorithm(key_init, env, initializer, hp['horizon'], hp['num_candidates'], params=env_params)
-
-                    # the decoupling fails when the rank is too high for the samples, it falls back to the random initialization
-                    try: algorithm, failed = make(initializer), 0
-                    except Exception as e:
-                        print(f'{initializer.name} failed, falling back to random: {e}')
-                        algorithm, failed = make(RandomInitializer(*args)), 1
-
-                    rows, done = [], 0
-                    for steps in TRAIN_STEPS:
-                        if steps > done: algorithm._train(steps - done)
-                        done = steps
-                        rows.append([steps, *map(float, evaluate(algorithm.worldmodel, test, S, A, mask))])
-
-                    with open(RESULTS, 'a', newline='') as f:
-                        csv.writer(f).writerows([env_name, seed, N, initializer.name, *row, failed, initializer.trained_steps] for row in rows)
-
-                    print(f'{env_name} seed {seed} N {N:4d} {initializer.name:>26}: ' + '  '.join(f'onestep {r[1]:.2e} rollout {r[3]:.2e}' for r in rows[-1:]))
+    paper_save(fig, f'paper_init_{metric}')
 
 if __name__ == '__main__': main()

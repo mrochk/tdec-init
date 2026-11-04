@@ -64,3 +64,39 @@ PARAMS = {
     # about 10 to 100 for the oracle, mostly set by how far the goal starts
     'Reacher-misc': make_params({'num_hidden': 4}),
 }
+
+# plotting, the paper figures
+
+# env titles, in the order of the columns of the paper figures
+ENV_LABELS = {
+    'Reacher-misc': 'Reacher',
+    'Pendulum-v1': 'Pendulum',
+    'CartPoleSwingUp-v0': 'CartPole',
+    'AcrobotContinuous-v0': 'Acrobot',
+    'PlanarQuadrotor-misc': 'Quadrotor',
+}
+PAPER_ENVS = list(ENV_LABELS)
+
+METRICS = {
+    'onestep': 'one-step error',
+    'jacobian': 'Jacobian error',
+    'rollout': 'rollout error',
+}
+
+COLORS = {'random': '#8a8984', 'decoupling': '#2a78d6', 'values': '#eb6834', 'sobolev': '#1baf7a'}
+
+PAPER_INITS = {'random': 'random', 'values': 'values', 'sobolev': 'sobolev', 'decoupling': 'TDec-Init'}
+# the pretraining variants run by the experiments, the paper shows the best one of each method
+BEST_OF = {method: [*(f'{method}-{steps}' for steps in PRETRAIN_STEPS), f'{method}-heldout'] for method in ('values', 'sobolev')}
+SANS = {'TDec-Init'} # labels in sans serif, as \textsf in the paper
+SANS_FONTS = ['Helvetica', 'Nimbus Sans', 'TeX Gyre Heros', 'Arial', 'DejaVu Sans'] # helvetica or a clone, as \textsf next to times
+SMALLCAPS = {'Sobolev'} # labels in small caps, as \textsc in the paper
+PAPER_STEPS = {0: 'at initialization', 10000: 'after 10k train steps'}
+TEXT_WIDTH = 7.0 # inches, both columns of the ifac format (figure*), a column is 3.4
+PAPER_STYLE = {'random': ('', 'o'), 'values': ((4, 2), 's'), 'sobolev': ((1, 1.5), '^'), 'decoupling': ('', 'D')}
+
+PAPER_RC = {
+    'font.family': 'serif', 'font.serif': ['STIXGeneral'], 'mathtext.fontset': 'stix', # times, as the ifac format
+    'font.size': 8, 'axes.titlesize': 8, 'axes.labelsize': 8, 'xtick.labelsize': 7, 'ytick.labelsize': 7, 'legend.fontsize': 8,
+    'axes.linewidth': 0.6, 'xtick.major.width': 0.6, 'ytick.major.width': 0.6, 'pdf.fonttype': 42,
+}

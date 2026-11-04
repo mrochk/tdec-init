@@ -12,7 +12,7 @@ from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
 SEEDS = range(5)
 
 RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'mbrl.csv')
-COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss', 'failed']
+COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss']
 
 @click.command()
 @click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False))
@@ -35,7 +35,7 @@ def main(envs):
             args = (key_init, hp['num_hidden'], *samples, mask)
             initializers = [
                 RandomInitializer(*args),
-                DecouplingInitializer(*args),
+                TDec_Init(*args),
                 #*[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
                 #*[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
                 #ValuesHeldoutInitializer(*args),
@@ -56,15 +56,17 @@ def main(envs):
                     train_steps=hp['train_steps'],
                 )
 
-                try: algorithm, failed = make(initializer), 0
+                # the decoupling fails when the rank is too high for the samples, the run is skipped and has no rows
+                try: algorithm = make(initializer)
                 except Exception as e:
-                    print(f'{name} failed: {e} - skipping')
+                    if not isinstance(initializer, TDec_Init): raise
+                    print(f'{name} failed, skipping: {e}')
                     continue
 
                 returns, losses = algorithm.run(hp['num_episodes'])
 
                 with open(RESULTS, 'a', newline='') as f:
-                    csv.writer(f).writerows([env_name, seed, name, episode, r, l, failed] for episode, (r, l) in enumerate(zip(returns, losses)))
+                    csv.writer(f).writerows([env_name, seed, name, episode, r, l] for episode, (r, l) in enumerate(zip(returns, losses)))
 
                 print('  returns:', ' '.join(f'{r:8.1f}' for r in returns))
 
