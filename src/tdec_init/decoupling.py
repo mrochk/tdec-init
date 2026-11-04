@@ -17,12 +17,12 @@ def cmtf_bsd(
     scaler = JacobianScaler(jacobians)
     jacobians, outputs = scaler.scale(jacobians, outputs)
 
-    algorithm = Algorithm(rank, key, niters, ninits, splines_dof=splines_dof, use_smoothing=False, show_progress=False)
+    algorithm = Algorithm(rank, key, niters, ninits, splines_dof=splines_dof, use_smoothing=False, show_progress=True)
 
     print('computing the decoupling...', flush=True, end=' ')
 
     decoupling = algorithm.run(inputs, outputs, jacobians)
 
-    print(f'done, best cpd error {algorithm.info.errors.min():.3f}', flush=True)
+    print(f'done, best cpd error {algorithm.info.errors.min():.5f}', flush=True)
 
     return scaler.unscale(decoupling)

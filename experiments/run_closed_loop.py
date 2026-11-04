@@ -9,10 +9,11 @@ from tdec_init.utils import angle_mask
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
 
-SEEDS = range(5)
+SEEDS = range(1)
 
 RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'mbrl.csv')
-COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss']
+# train_steps: the gradient steps of the training after the episode, up to the kept model, empty for the oracle
+COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss', 'train_steps']
 
 @click.command()
 @click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False))
@@ -28,7 +29,6 @@ def main(envs):
         pp(hp)
 
         for seed in SEEDS:
-            clear_rows(RESULTS, COLUMNS, env_name, seed)
             key_samples, key_init, key_algorithm = jax.random.split(jax.random.fold_in(jax.random.key(SEED), seed), 3)
             samples = collect_information(env, key_samples, hp['num_envs_collect'], hp['num_steps_collect'], params=env_params)
 
@@ -38,13 +38,15 @@ def main(envs):
                 TDec_Init(*args),
                 #*[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
                 #*[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                #ValuesHeldoutInitializer(*args),
-                #SobolevHeldoutInitializer(*args),
+                ValuesHeldoutInitializer(*args),
+                SobolevHeldoutInitializer(*args),
             ]
 
             # same algorithm key for all so that episodes start from same states
-            runs = [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
-            runs += [('oracle', Oracle, OraclePlanner, RandomInitializer(*args))]
+            runs = [('oracle', Oracle, OraclePlanner, RandomInitializer(*args))] + [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
+
+            # a rerun replaces the rows of these inits for this env and seed, the others are kept
+            clear_rows(RESULTS, COLUMNS, env_name, seed, [name for name, *_ in runs])
 
             for name, Algorithm, Planner, initializer in runs:
                 print(f'{env_name} seed {seed} {name}')
@@ -54,6 +56,8 @@ def main(envs):
                     Planner(hp['num_candidates'], hp['horizon']),
                     params=env_params,
                     train_steps=hp['train_steps'],
+                    patience=hp['patience'],
+                    eval_every=hp['eval_every'],
                 )
 
                 # the decoupling fails when the rank is too high for the samples, the run is skipped and has no rows
@@ -66,8 +70,10 @@ def main(envs):
                 returns, losses = algorithm.run(hp['num_episodes'])
 
                 with open(RESULTS, 'a', newline='') as f:
-                    csv.writer(f).writerows([env_name, seed, name, episode, r, l] for episode, (r, l) in enumerate(zip(returns, losses)))
+                    steps = getattr(algorithm, 'trained_steps', []) or [''] * len(returns)
+                    csv.writer(f).writerows([env_name, seed, name, episode, r, l, s] for episode, (r, l, s) in enumerate(zip(returns, losses, steps)))
 
                 print('  returns:', ' '.join(f'{r:8.1f}' for r in returns))
+                if algorithm.trained_steps: print('  steps:  ', ' '.join(f'{s:8d}' for s in algorithm.trained_steps))
 
 if __name__ == '__main__': main()

@@ -1,8 +1,10 @@
 import csv, os
 
 DEFAULT_HORIZON = 20
-DEFAULT_EPISODES = 20
-DEFAULT_TRAIN_STEPS = 1000
+DEFAULT_EPISODES = 10
+DEFAULT_TRAIN_STEPS = 10_000 # at most, between episodes
+DEFAULT_PATIENCE = 500 # steps without improvement of the held-out loss before stopping
+DEFAULT_EVAL_EVERY = 25 # steps between the checks of the held-out loss, the resolution of the stopping step
 DEFAULT_CANDIDATES = 1000
 DEFAULT_NUM_ENVS_COLLECT = 5
 DEFAULT_NUM_STEPS_COLLECT = 10
@@ -10,6 +12,8 @@ DEFAULT_NUM_STEPS_COLLECT = 10
 def make_params(dictionary):
     if (k := 'horizon') not in dictionary: dictionary[k] = DEFAULT_HORIZON
     if (k := 'train_steps') not in dictionary: dictionary[k] = DEFAULT_TRAIN_STEPS
+    if (k := 'patience') not in dictionary: dictionary[k] = DEFAULT_PATIENCE
+    if (k := 'eval_every') not in dictionary: dictionary[k] = DEFAULT_EVAL_EVERY
     if (k := 'num_episodes') not in dictionary: dictionary[k] = DEFAULT_EPISODES
     if (k := 'num_candidates') not in dictionary: dictionary[k] = DEFAULT_CANDIDATES
     if (k := 'num_envs_collect') not in dictionary: dictionary[k] = DEFAULT_NUM_ENVS_COLLECT
@@ -28,11 +32,19 @@ ENVS = {
     'quadrotor': 'PlanarQuadrotor-misc',
 }
 
-def clear_rows(path: str, columns: list, env: str, seed: int):
+def clear_rows(path: str, columns: list, env: str, seed: int, inits: list | None = None):
+    '''
+    remove the rows of env and seed, only of the inits given if any, so that a rerun replaces them and keeps the others
+    the file is rewritten with `columns`, the old rows get an empty value in the columns they did not have
+    '''
     rows = []
     if os.path.exists(path):
-        with open(path, newline='') as f: rows = list(csv.reader(f))[1:]
-    with open(path, 'w', newline='') as f: csv.writer(f).writerows([columns, *(r for r in rows if r[:2] != [env, str(seed)])])
+        with open(path, newline='') as f: rows = list(csv.DictReader(f))
+    rerun = lambda r: r['env'] == env and r['seed'] == str(seed) and (inits is None or r['init'] in inits)
+    with open(path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, columns, restval='', extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(r for r in rows if not rerun(r))
 
 PARAMS = {
 
@@ -50,7 +62,7 @@ PARAMS = {
     # return negative until the goal then +100 when crossing the line
     'AcrobotContinuous-v0': make_params({
         'env_params': {'dense_reward': True},
-        'num_hidden': 16,
+        'num_hidden': 24,
     }),
 
     # return at most 200
@@ -71,9 +83,9 @@ PARAMS = {
 ENV_LABELS = {
     'Reacher-misc': 'Reacher',
     'Pendulum-v1': 'Pendulum',
+    'PlanarQuadrotor-misc': 'Quadrotor',
     'CartPoleSwingUp-v0': 'CartPole',
     'AcrobotContinuous-v0': 'Acrobot',
-    'PlanarQuadrotor-misc': 'Quadrotor',
 }
 PAPER_ENVS = list(ENV_LABELS)
 
@@ -91,7 +103,6 @@ BEST_OF = {method: [*(f'{method}-{steps}' for steps in PRETRAIN_STEPS), f'{metho
 SANS = {'TDec-Init'} # labels in sans serif, as \textsf in the paper
 SANS_FONTS = ['Helvetica', 'Nimbus Sans', 'TeX Gyre Heros', 'Arial', 'DejaVu Sans'] # helvetica or a clone, as \textsf next to times
 SMALLCAPS = {'Sobolev'} # labels in small caps, as \textsc in the paper
-PAPER_STEPS = {0: 'at initialization', 10000: 'after 10k train steps'}
 TEXT_WIDTH = 7.0 # inches, both columns of the ifac format (figure*), a column is 3.4
 PAPER_STYLE = {'random': ('', 'o'), 'values': ((4, 2), 's'), 'sobolev': ((1, 1.5), '^'), 'decoupling': ('', 'D')}
 

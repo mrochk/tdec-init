@@ -15,7 +15,7 @@ def main():
     df = df[df.env.isin(PAPER_ENVS)]
 
     report_missing(df, ['N'])
-    for metric in METRICS: paper(df, metric)
+    paper(df)
 
 def report_missing(df, group: list):
     '''print the runs with fewer seeds than their env, the failed decouplings are skipped and have no rows'''
@@ -30,7 +30,9 @@ def best_of(df, group: list, metric: str, agg: str = 'median', higher: bool = Fa
     for method, variants in BEST_OF.items():
         rows = df[df.init.isin(variants)]
         if rows.empty: continue
-        score = rows.groupby(group + ['init'])[metric].agg(agg)
+        # a group without any value, e.g. a ratio without an oracle run, has no best variant and is left out
+        score = rows.groupby(group + ['init'])[metric].agg(agg).dropna()
+        if score.empty: continue
         best = pd.DataFrame((score.groupby(group).idxmax() if higher else score.groupby(group).idxmin()).tolist(), columns=group + ['init'])
         print(f'best {method} for {metric}:', best.groupby(group[:-1] or group).init.agg(' '.join).to_string(), sep='\n')
         out.append(rows.merge(best).assign(init=method))
@@ -83,32 +85,33 @@ def paper_save(fig, name: str, output: str = OUTPUT):
     plt.rcdefaults()
     print('saved', path)
 
-def paper(df, metric: str):
-    '''error against N, envs as columns, at initialization and after training as rows'''
+def paper(df):
+    '''the error of the models at initialization against N, envs as columns, the metrics of METRICS as rows'''
     plt.rcParams.update(PAPER_RC)
     Ns = sorted(df.N.unique())
-    df = best_of(df, ['env', 'train_steps', 'N'], metric)
 
-    fig, axes = plt.subplots(len(PAPER_STEPS), len(PAPER_ENVS), figsize=(TEXT_WIDTH, 2.6), sharex=True, squeeze=False)
-    for row, steps in enumerate(PAPER_STEPS):
+    fig, axes = plt.subplots(len(METRICS), len(PAPER_ENVS), figsize=(TEXT_WIDTH, 3.6), sharex=True, squeeze=False)
+    for row, (metric, name) in enumerate(METRICS.items()):
+        # the best variant of each method for this metric
+        best = best_of(df, ['env', 'N'], metric)
         for col, env in enumerate(PAPER_ENVS):
             ax = axes[row, col]
             for init, label in PAPER_INITS.items():
-                paper_line(ax, df[(df.env == env) & (df.train_steps == steps) & (df.init == init)].groupby('N')[metric], init, label)
+                paper_line(ax, best[(best.env == env) & (best.init == init)].groupby('N')[metric], init, label)
             ax.set(xscale='log', yscale='log')
-            ax.set_xticks(Ns, ['' if n == 200 else str(n) for n in Ns]) # no room for 200 next to 100
+            ax.set_xticks(Ns, ['' if n == 200 and 100 in Ns else str(n) for n in Ns]) # no room for 200 next to 100
             ax.minorticks_off()
             ax.yaxis.set_major_locator(plt.LogLocator(numticks=5))
             ax.grid(True, color='#e6e5e0', linewidth=0.5)
             ax.tick_params(length=2, pad=1.5)
             if row == 0: ax.set_title(ENV_LABELS[env])
-            if row == len(PAPER_STEPS) - 1: ax.set_xlabel('$N$', labelpad=1)
-            if col == 0: ax.set_ylabel(f'{METRICS[metric]}\n{PAPER_STEPS[steps]}')
+            if row == len(METRICS) - 1: ax.set_xlabel('$N$', labelpad=1)
+            if col == 0: ax.set_ylabel(name)
 
     paper_legend(fig, *legend_entries(fig))
     sns.despine(fig)
-    fig.tight_layout(rect=(0, 0, 1, 0.955), h_pad=0.4, w_pad=0.4)
+    fig.tight_layout(rect=(0, 0, 1, 0.965), h_pad=0.4, w_pad=0.4)
 
-    paper_save(fig, f'paper_init_{metric}')
+    paper_save(fig, 'paper_init')
 
 if __name__ == '__main__': main()

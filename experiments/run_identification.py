@@ -6,7 +6,7 @@ import equinox as eqx
 import gymnax
 
 from tdec_init.initialize import *
-from tdec_init import ModelBasedAlgorithm, RandomShootingPlanner, collect_information
+from tdec_init import collect_information
 from tdec_init.utils import angle_mask, get_fields, state2vec, wrap_angles
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
@@ -14,13 +14,13 @@ from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
 SEEDS = range(1)
 NUM_ENVS = [1, 2, 5, 10, 20, 50] # TODO change to have more env diversity in low-data regime
 NUM_STEPS = 10
-TRAIN_STEPS = [0, 10000]
 
 NUM_TEST_ENVS, NUM_TEST_STEPS = 500, NUM_STEPS # one-step test set
 NUM_ROLLOUTS, ROLLOUT_HORIZON = 100, 20 # multi-step test set
 
 RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'init.csv')
-COLUMNS = ['env', 'seed', 'N', 'init', 'train_steps', 'onestep', 'jacobian', 'rollout', 'pretrain_steps']
+# the errors of the models at initialization, pretrain_steps: the gradient steps of the pretraining, 0 without
+COLUMNS = ['env', 'seed', 'N', 'init', 'onestep', 'jacobian', 'rollout', 'pretrain_steps']
 
 def trajectories(env, params, fields, key, num: int, horizon: int):
     '''random action trajectories from the initial states, without resets, returns the states (num, horizon + 1, n) and actions (num, horizon, k)'''
@@ -98,32 +98,17 @@ def main(envs):
 
                 for initializer in initializers:
 
-                    # the algorithm is only used to train the model on the samples, its planner is never called
-                    make = lambda initializer: ModelBasedAlgorithm(
-                        env, key_init, initializer,
-                        RandomShootingPlanner(hp['num_candidates'], hp['horizon']),
-                        params=env_params,
-                    )
-
                     # the decoupling fails when the rank is too high for the samples, the run is skipped and has no rows
-                    try: algorithm = make(initializer)
+                    try: model = initializer.initialize()
                     except Exception as e:
                         if not isinstance(initializer, TDec_Init): raise
                         print(f'{initializer.name} failed, skipping: {e}')
                         continue
 
-                    # train in increments so that each budget in TRAIN_STEPS is evaluated on the same run
-                    rows, done = [], 0
-                    for steps in TRAIN_STEPS:
-                        if steps > done:
-                            algorithm.train_steps = steps - done
-                            algorithm._train_model()
-                        done = steps
-                        rows.append([steps, *map(float, evaluate(algorithm.model, test, S, A, mask))])
-
+                    onestep, jacobian, rollout = map(float, evaluate(model, test, S, A, mask))
                     with open(RESULTS, 'a', newline='') as f:
-                        csv.writer(f).writerows([env_name, seed, N, initializer.name, *row, initializer.trained_steps] for row in rows)
+                        csv.writer(f).writerow([env_name, seed, N, initializer.name, onestep, jacobian, rollout, initializer.trained_steps])
 
-                    print(f'{env_name} seed {seed} N {N:4d} {initializer.name:>26}: ' + '  '.join(f'onestep {r[1]:.2e} rollout {r[3]:.2e}' for r in rows[-1:]))
+                    print(f'{env_name} seed {seed} N {N:4d} {initializer.name:>16}: onestep {onestep:.2e} jacobian {jacobian:.2e} rollout {rollout:.2e}')
 
 if __name__ == '__main__': main()

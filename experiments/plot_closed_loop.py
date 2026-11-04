@@ -27,30 +27,47 @@ def main():
     paper(df)
 
 def paper(df):
-    '''the paper figure: the ratio to the oracle against the episode, envs as columns, at the text width'''
+    '''
+    the paper figure, envs as columns, at the text width: the ratio to the oracle against the episode, and below
+    the gradient steps of the training after each episode, until the held-out loss stopped improving
+    '''
     plt.rcParams.update(PAPER_RC)
     episodes = sorted(df.episode.unique())
     # one variant per env, by the mean ratio over the episodes, per episode would select the noise
     df = best_of(df, ['env'], 'ratio', agg='mean', higher=True)
+    # the rows of the runs before the column existed have no steps
+    steps = df.dropna(subset=['train_steps']) if 'train_steps' in df else df.iloc[:0].assign(train_steps=[])
 
-    fig, axes = plt.subplots(1, len(PAPER_ENVS), figsize=(TEXT_WIDTH, 1.75), sharey=True, squeeze=False)
-    for col, (ax, env) in enumerate(zip(axes[0], PAPER_ENVS)):
-        ax.axhline(1, color='#0b0b0b', dashes=(4, 2), linewidth=0.9, label='oracle')
+    fig, axes = plt.subplots(2, len(PAPER_ENVS), figsize=(TEXT_WIDTH, 3.0), sharex=True, sharey='row', squeeze=False)
+    for col, env in enumerate(PAPER_ENVS):
+        top, bottom = axes[0, col], axes[1, col]
+
+        top.axhline(1, color='#0b0b0b', dashes=(4, 2), linewidth=0.9, label='oracle')
         for init, label in PAPER_INITS.items():
-            paper_line(ax, df[(df.env == env) & (df.init == init)].groupby('episode')['ratio'], init, label)
-        ax.set(ylim=(0, 1.05), xlim=(episodes[0] - 0.5, episodes[-1] + 0.5))
-        ax.set_xticks([1, *episodes[4::5]])
-        ax.grid(True, color='#e6e5e0', linewidth=0.5)
-        ax.tick_params(length=2, pad=1.5)
-        ax.set_title(ENV_LABELS[env])
-        ax.set_xlabel('episode', labelpad=1)
-        if col == 0: ax.set_ylabel('return relative to oracle')
+            paper_line(top, df[(df.env == env) & (df.init == init)].groupby('episode')['ratio'], init, label)
+            paper_line(bottom, steps[(steps.env == env) & (steps.init == init)].groupby('episode')['train_steps'], init, label)
+        top.set(ylim=(0, 1.05))
+        top.set_title(ENV_LABELS[env])
+        bottom.set_xlabel('episode', labelpad=1)
+
+        for ax in (top, bottom):
+            ax.set_xlim(episodes[0] - 0.5, episodes[-1] + 0.5)
+            ax.set_xticks([1, *episodes[4::5]])
+            ax.grid(True, color='#e6e5e0', linewidth=0.5)
+            ax.tick_params(length=2, pad=1.5)
+
+    # once all the envs are drawn, the shared limits cover all of them
+    axes[1, 0].set_ylim(bottom=0)
+    axes[0, 0].set_ylabel('return relative to oracle')
+    axes[1, 0].set_ylabel('gradient steps\nafter the episode')
+    # thousands of steps as 2k, 4k, ...
+    axes[1, 0].yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{v / 1000:g}k' if v else '0'))
 
     # the oracle last in the legend
     handles, labels = legend_entries(fig)
     paper_legend(fig, handles[1:] + handles[:1], labels[1:] + labels[:1])
     sns.despine(fig)
-    fig.tight_layout(rect=(0, 0, 1, 0.88), w_pad=0.6)
+    fig.tight_layout(rect=(0, 0, 1, 0.93), h_pad=0.6, w_pad=0.6)
     paper_save(fig, 'paper_mbrl_ratio', OUTPUT)
 
 if __name__ == '__main__': main()
