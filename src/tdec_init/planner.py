@@ -46,7 +46,7 @@ class RandomShootingPlanner(Planner):
 
             return jnp.sum(rewards)
 
-        returns = jax.vmap(rollout)(actions)
+        returns = jax.jit(jax.vmap(rollout))(actions)
 
         # return the action that led to the highest return
         return actions[jnp.argmax(returns), 0]

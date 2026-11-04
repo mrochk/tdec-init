@@ -1,25 +1,11 @@
 import warnings; warnings.simplefilter('ignore')
-
-import csv, os
-import click
+import csv, os, click
 import jax, gymnax
 from pprint import pp
 
-from tdec_init import (
-    ModelBasedAlgorithm, Oracle,
-    RandomShootingPlanner, OraclePlanner,
-    collect_information,
-)
-
+from tdec_init import ModelBasedAlgorithm, Oracle, RandomShootingPlanner, OraclePlanner, collect_information
 from tdec_init.collect import make_delta
-from tdec_init.initialize import (
-    RandomInitializer,
-    DecouplingInitializer,
-    ValuesInitializer,
-    SobolevInitializer,
-    ValuesHeldoutInitializer,
-    SobolevHeldoutInitializer,
-)
+from tdec_init.initialize import *
 from tdec_init.utils import angle_mask
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
@@ -30,7 +16,7 @@ RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'mbrl.csv')
 COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss', 'failed']
 
 @click.command()
-@click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False), help='env to run, repeat for several (default all)')
+@click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False))
 def main(envs):
     os.makedirs(os.path.dirname(RESULTS), exist_ok=True)
 
@@ -51,14 +37,11 @@ def main(envs):
             args = (key_init, hp['num_hidden'], *samples, mask)
             initializers = [
                 RandomInitializer(*args),
-
                 DecouplingInitializer(*args),
-
-                *[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                *[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-
-                ValuesHeldoutInitializer(*args),
-                SobolevHeldoutInitializer(*args),
+                #*[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
+                #*[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
+                #ValuesHeldoutInitializer(*args),
+                #SobolevHeldoutInitializer(*args),
             ]
 
             # the same algorithm key for all, so that the episodes start from the same states
