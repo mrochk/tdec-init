@@ -4,7 +4,6 @@ import jax, gymnax
 from pprint import pp
 
 from tdec_init import ModelBasedAlgorithm, Oracle, RandomShootingPlanner, OraclePlanner, collect_information
-from tdec_init.collect import make_delta
 from tdec_init.initialize import *
 from tdec_init.utils import angle_mask
 
@@ -29,7 +28,6 @@ def main(envs):
         pp(hp)
 
         for seed in SEEDS:
-            # a rerun replaces the rows of this env and seed, the others are kept
             clear_rows(RESULTS, COLUMNS, env_name, seed)
             key_samples, key_init, key_algorithm = jax.random.split(jax.random.fold_in(jax.random.key(SEED), seed), 3)
             samples = collect_information(env, key_samples, hp['num_envs_collect'], hp['num_steps_collect'], params=env_params)
@@ -44,7 +42,7 @@ def main(envs):
                 #SobolevHeldoutInitializer(*args),
             ]
 
-            # the same algorithm key for all, so that the episodes start from the same states
+            # same algorithm key for all so that episodes start from same states
             runs = [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
             runs += [('oracle', Oracle, OraclePlanner, RandomInitializer(*args))]
 
@@ -52,19 +50,16 @@ def main(envs):
                 print(f'{env_name} seed {seed} {name}')
 
                 make = lambda initializer: Algorithm(
-                    env, 
-                    key_algorithm,
-                    initializer,
+                    env, key_algorithm, initializer,
                     Planner(hp['num_candidates'], hp['horizon']),
                     params=env_params,
                     train_steps=hp['train_steps'],
                 )
 
-                # the decoupling fails when the rank is too high for the samples, it falls back to the random initialization
                 try: algorithm, failed = make(initializer), 0
                 except Exception as e:
-                    print(f'{name} failed, falling back to random: {e}')
-                    algorithm, failed = make(initializers[0]), 1
+                    print(f'{name} failed: {e} - skipping')
+                    continue
 
                 returns, losses = algorithm.run(hp['num_episodes'])
 

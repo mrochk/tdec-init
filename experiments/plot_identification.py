@@ -5,8 +5,8 @@ import jax, jax.numpy as jnp
 import equinox as eqx
 import gymnax
 
-from tdec_init import ModelBasedAlgorithm, collect_information
 from tdec_init.initialize import *
+from tdec_init import ModelBasedAlgorithm, collect_information
 from tdec_init.utils import angle_mask, get_fields, pack, wrap_angles
 
 from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
@@ -59,11 +59,6 @@ def evaluate(model, test, S, A, mask):
     rollout = jnp.mean((wrap_angles(Shat - S[:, 1:], mask[:n]) / std) ** 2)
 
     return onestep, jacobian, rollout
-
-def wide(initializer):
-    '''tell apart the wide version of an initialization'''
-    initializer.name = f'{initializer.name}-wide'
-    return initializer
 
 @click.command()
 @click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False), help='env to run, repeat for several (default all)')
