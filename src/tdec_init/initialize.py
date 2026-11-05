@@ -34,7 +34,7 @@ class Initializer:
 
     def initialize(self) -> MLP: raise NotImplementedError
 
-class RandomInitializer(Initializer):
+class Random_Init(Initializer):
     '''lecun normal on standardized inputs, zero biases'''
     name = 'random'
 
@@ -65,37 +65,40 @@ class TDec_Init(Initializer):
 
         return MLP(W0, W1, internals, scale, self.angles_mask)
 
-class ValuesInitializer(Initializer):
-    '''random initialization, then pretraining on the values'''
-    name = 'values'
+class Values_Init(Initializer):
+    '''
+    random initialization, then pretraining on the values of a part of the samples, checking the loss on the held-out
+    rest every `eval_every` steps, until it has not improved for `patience` steps or for at most `max_steps` steps,
+    the model with the lowest held-out loss is kept
+    '''
+    name = 'values-heldout'
     loss = staticmethod(values_loss)
+    validation = 0.2 # fraction of the samples held out, at least one
 
-    def __init__(self, key, num_hidden, inputs, outputs, jacobians, angles_mask, pretrain_steps: int, lr: float = 1e-3, batch_size: int = 32):
+    def __init__(
+        self, key, num_hidden, inputs, outputs, jacobians, angles_mask,
+        patience: int = 2000, max_steps: int = 100_000, lr: float = 1e-3, batch_size: int = 32, eval_every: int = 25,
+    ):
         super().__init__(key, num_hidden, inputs, outputs, jacobians, angles_mask)
-        self.pretrain_steps = pretrain_steps
-        self.lr = lr
-        self.batch_size = batch_size
-
-        # the number of steps tells apart the runs with different budgets
-        self.name = f'{self.name}-{pretrain_steps}'
-
-    def _random_model(self) -> MLP:
-        return RandomInitializer(self.key, self.num_hidden, self.inputs, self.outputs, self.jacobians, self.angles_mask).initialize()
+        self.patience, self.max_steps = patience, max_steps
+        self.lr, self.batch_size = lr, batch_size
+        self.eval_every = eval_every # steps between the checks of the held-out loss, as between the episodes
 
     def initialize(self):
-        return self.pretrain(self._random_model(), (self.inputs, self.outputs, self.jacobians))
+        model = Random_Init(self.key, self.num_hidden, self.inputs, self.outputs, self.jacobians, self.angles_mask).initialize()
 
-    def pretrain(self, model: MLP, data: tuple, validation: tuple | None = None, patience: int | None = None) -> MLP:
-        '''
-        minimize the loss on data = (inputs, outputs, jacobians) for `pretrain_steps` steps
-        with a validation set, return the model with the lowest validation loss, checked every 100 steps,
-        and stop once it has not improved for `patience` steps
-        '''
+        N = self.inputs.shape[0]
+        index = jax.random.permutation(fold_in(self.key, 2), N)
+        k = max(1, round(self.validation * N))
+        subset = lambda i: (self.inputs[i], self.outputs[i], self.jacobians[..., i].transpose(2, 0, 1)) # jacobians (N, n, m)
+
+        return self.pretrain(model, subset(index[k:]), subset(index[:k]))
+
+    def pretrain(self, model: MLP, data: tuple, validation: tuple) -> MLP:
+        '''minimize the loss on data = (inputs, outputs, jacobians), early stopped on the loss on validation'''
         optimizer = optax.adam(self.lr)
         opt_state = optimizer.init(eqx.filter(model, eqx.is_inexact_array))
-
         inputs, outputs, jacobians = data
-        jacobians = jacobians.transpose(2, 0, 1) # (N, n, m)
 
         @eqx.filter_jit
         def update(model, opt_state, key):
@@ -104,71 +107,38 @@ class ValuesInitializer(Initializer):
             updates, opt_state = optimizer.update(grads, opt_state)
             return eqx.apply_updates(model, updates), opt_state, loss
 
-        @eqx.filter_jit
-        def validate(model):
-            val_inputs, val_outputs, val_jacobians = validation
-            return self.loss(model, val_inputs, val_outputs, val_jacobians.transpose(2, 0, 1))
+        validate = eqx.filter_jit(lambda model: self.loss(model, *validation))
 
-        best, best_loss, best_step = model, validate(model) if validation is not None else None, 0
+        # step 0 is the random model
+        best, best_loss, best_step = model, validate(model), 0
+        validation_loss = best_loss # the last checked, shown in the progress bar
 
         # self.key already drew the random weights, derive another one for the batches
-        keys = split(fold_in(self.key, 1), self.pretrain_steps)
+        keys = split(fold_in(self.key, 1), self.max_steps)
         bar, losses = tqdm(keys, desc=f'{self.name} pretraining'), []
 
         for step, key in enumerate(bar, 1):
             model, opt_state, loss = update(model, opt_state, key)
             losses.append(loss)
 
+            if step % self.eval_every == 0:
+                validation_loss = validate(model)
+                if validation_loss < best_loss: best, best_loss, best_step = model, validation_loss, step
+                if step - best_step >= self.patience: break
+
             # the batch loss is noisy, show its mean over the last 100 steps
             if step % 100 == 0:
-                postfix = dict(loss=f'{float(jnp.mean(jnp.array(losses[-100:]))):.6f}')
-
-                if validation is not None:
-                    validation_loss = validate(model)
-                    if validation_loss < best_loss: best, best_loss, best_step = model, validation_loss, step
-                    postfix.update(validation=f'{float(validation_loss):.6f}', best=f'{float(best_loss):.6f}')
-
-                bar.set_postfix(postfix)
-
-                if validation is not None and patience is not None and step - best_step >= patience: break
+                bar.set_postfix(
+                    loss=f'{float(jnp.mean(jnp.array(losses[-100:]))):.6f}',
+                    validation=f'{float(validation_loss):.6f}',
+                    best=f'{float(best_loss):.6f}',
+                )
 
         bar.close()
-        self.trained_steps = step
-        return model if validation is None else best
+        self.trained_steps = best_step # the steps of the kept model, as recorded between the episodes
+        return best
 
-class SobolevInitializer(ValuesInitializer):
-    '''random initialization, then pretraining on the values and the jacobians'''
-    name = 'sobolev'
-    loss = staticmethod(sobolev_loss)
-
-class ValuesHeldoutInitializer(ValuesInitializer):
-    '''pretrain on a part of the samples until the loss of the held out rest stops improving'''
-    name = 'values-heldout'
-    validation = 0.2 # fraction of the samples held out, at least one
-
-    def __init__(self, key, num_hidden, inputs, outputs, jacobians, angles_mask, patience: int = 2000, max_steps: int = 100_000, **kwargs):
-        super().__init__(key, num_hidden, inputs, outputs, jacobians, angles_mask, max_steps, **kwargs)
-        self.patience = patience
-        # trained until convergence, the name has no number of steps
-        self.name = type(self).name
-
-    def initialize(self):
-        N = self.inputs.shape[0]
-        index = jax.random.permutation(fold_in(self.key, 2), N)
-        k = max(1, round(self.validation * N))
-        subset = lambda i: (self.inputs[i], self.outputs[i], self.jacobians[..., i])
-
-        return self.pretrain(self._random_model(), subset(index[k:]), subset(index[:k]), self.patience)
-
-class SobolevHeldoutInitializer(ValuesHeldoutInitializer):
+class Sobolev_Init(Values_Init):
+    '''as ValuesHeldoutInitializer, pretraining on the values and the jacobians'''
     name = 'sobolev-heldout'
     loss = staticmethod(sobolev_loss)
-
-INITIALIZERS = [
-    RandomInitializer,
-    TDec_Init,
-    ValuesInitializer,
-    SobolevInitializer,
-    ValuesHeldoutInitializer,
-    SobolevHeldoutInitializer,
-]

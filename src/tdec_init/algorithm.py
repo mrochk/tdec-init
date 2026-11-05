@@ -21,20 +21,13 @@ class ModelBasedAlgorithm:
         planner: RandomShootingPlanner,
         params = None,
         fields = None,
+        val_frac: float = 0.2,
+        max_train_steps: int = 10_000,
+        patience: int = 500,
+        eval_every: int = 50,
         lr: float = 1e-3,
         batch_size: int = 32,
-        train_steps: int = 10_000,
-        patience: int | None = None,
-        validation: float = 0.2,
-        eval_every: int = 50,
     ):
-        '''
-        with `patience`, a `validation` fraction of each episode's data is held out once and for all when it is
-        collected, each training round trains on the rest for at most `train_steps` steps, checks the loss on all
-        the held-out data every `eval_every` steps, stops once it has not improved for `patience` steps, and keeps
-        the model with the lowest held-out loss, the initial samples are never held out, the initializer saw them
-        without, each round is `train_steps` steps on all the data
-        '''
         self.env = env
         self.key = key
 
@@ -46,9 +39,11 @@ class ModelBasedAlgorithm:
         self.planner.post_init(env, self.params, self.fields)
 
         self.batch_size = batch_size
-        self.train_steps = train_steps
-        self.patience, self.validation, self.eval_every = patience, validation, eval_every
-        self.trained_steps = [] # steps of each training round, with early stopping the step of the kept model
+        self.main_train_steps = max_train_steps
+        self.patience = patience
+        self.val_frac = val_frac
+        self.eval_every = eval_every
+        self.trained_steps = []
 
         # the episodes have their own keys, so that they start from the same states whatever the training
         self.episode_key = jax.random.fold_in(key, 1)
@@ -72,23 +67,19 @@ class ModelBasedAlgorithm:
     def _validation_loss(model, inputs, outputs): return loss(model, inputs, outputs)
 
     def _hold_out(self, num: int):
-        '''mask of the new samples to hold out, a `validation` fraction drawn at random'''
+        '''mask of the new samples to hold out'''
         self.key, key = jax.random.split(self.key)
-        k = round(self.validation * num)
+        k = round(self.val_frac * num)
         return jnp.zeros(num, dtype=bool).at[jax.random.permutation(key, num)[:k]].set(True)
 
     def _train_model(self):
-        # the held-out samples were never trained on, so the model before the round competes fairly
-        early_stopping = self.patience is not None and bool(self.held_out.any())
+        val_inputs, val_outputs = self.inputs[self.held_out], self.outputs[self.held_out]
+        inputs, outputs = self.inputs[~self.held_out], self.outputs[~self.held_out]
 
-        if early_stopping:
-            val_inputs, val_outputs = self.inputs[self.held_out], self.outputs[self.held_out]
-            inputs, outputs = self.inputs[~self.held_out], self.outputs[~self.held_out]
-            # step 0 is the model before the round, kept if the training only makes it worse
-            best, best_loss, best_step = self.model, self._validation_loss(self.model, val_inputs, val_outputs), 0
-        else: inputs, outputs = self.inputs, self.outputs
+        # step 0 is the model before the round, kept if the training only makes it worse
+        best, best_loss, best_step = self.model, self._validation_loss(self.model, val_inputs, val_outputs), 0
 
-        bar = tqdm(range(1, self.train_steps + 1))
+        bar = tqdm(range(1, self.main_train_steps + 1))
         L, step = None, 0
         for step in bar:
             self.key, key = jax.random.split(self.key)
@@ -99,14 +90,14 @@ class ModelBasedAlgorithm:
             L = 0.5*L_prev + 0.5*L
             bar.set_postfix_str(f'loss={L:.4f}')
 
-            if early_stopping and step % self.eval_every == 0:
+            if step % self.eval_every == 0:
                 validation_loss = self._validation_loss(self.model, val_inputs, val_outputs)
                 if validation_loss < best_loss: best, best_loss, best_step = self.model, validation_loss, step
                 bar.set_postfix_str(f'loss={L:.6f}, validation={float(validation_loss):.6f}, best={float(best_loss):.6f}')
                 if step - best_step >= self.patience: break
 
         bar.close()
-        if early_stopping: self.model, step = best, best_step
+        self.model, step = best, best_step
         self.trained_steps.append(step)
 
     @eqx.filter_jit
@@ -130,9 +121,7 @@ class ModelBasedAlgorithm:
         return out
 
     def run(self, num_episodes: int):
-
         returns, losses = [], []
-
         bar = tqdm(range(num_episodes))
         for episode in bar:
 

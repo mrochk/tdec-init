@@ -9,11 +9,11 @@ from tdec_init.initialize import *
 from tdec_init import collect_information
 from tdec_init.utils import angle_mask, get_fields, state2vec, wrap_angles
 
-from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
+from config import ENVS, PARAMS, SEED, clear_rows
 
 SEEDS = range(1)
-NUM_ENVS = [1, 2, 5, 10, 20, 50] # TODO change to have more env diversity in low-data regime
-NUM_STEPS = 10
+NUM_ENVS = [2, 5, 10, 20, 50, 100]
+NUM_STEPS = 5
 
 NUM_TEST_ENVS, NUM_TEST_STEPS = 500, NUM_STEPS # one-step test set
 NUM_ROLLOUTS, ROLLOUT_HORIZON = 100, 20 # multi-step test set
@@ -88,20 +88,16 @@ def main(envs):
 
                 args = (key_init, hp['num_hidden'], *samples, mask)
                 initializers = [
-                    RandomInitializer(*args),
+                    Random_Init(*args),
                     TDec_Init(*args),
-                    #*[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                    #*[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                    ValuesHeldoutInitializer(*args),
-                    SobolevHeldoutInitializer(*args),
+                    #ValuesHeldoutInitializer(*args),
+                    Sobolev_Init(*args),
                 ]
 
                 for initializer in initializers:
-
-                    # the decoupling fails when the rank is too high for the samples, the run is skipped and has no rows
                     try: model = initializer.initialize()
                     except Exception as e:
-                        if not isinstance(initializer, TDec_Init): raise
+                        assert isinstance(initializer, TDec_Init)
                         print(f'{initializer.name} failed, skipping: {e}')
                         continue
 

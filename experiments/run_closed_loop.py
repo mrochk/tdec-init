@@ -2,23 +2,30 @@ import warnings; warnings.simplefilter('ignore')
 import csv, os, click
 import jax, gymnax
 from pprint import pp
+from pathlib import Path
 
-from tdec_init import ModelBasedAlgorithm, Oracle, RandomShootingPlanner, OraclePlanner, collect_information
 from tdec_init.initialize import *
 from tdec_init.utils import angle_mask
+from tdec_init import (
+    RandomShootingPlanner,
+    ModelBasedAlgorithm,
+    collect_information,
+    OraclePlanner,
+    Oracle,
+)
 
-from config import ENVS, PARAMS, PRETRAIN_STEPS, SEED, clear_rows
+from config import ENVS, PARAMS, SEED, clear_rows
 
 SEEDS = range(1)
 
-RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'mbrl.csv')
-# train_steps: the gradient steps of the training after the episode, up to the kept model, empty for the oracle
+PATH_RESULTS = Path(__file__).parent / 'results' / 'mbrl.csv'
+
 COLUMNS = ['env', 'seed', 'init', 'episode', 'return', 'loss', 'train_steps']
 
 @click.command()
 @click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False))
 def main(envs):
-    os.makedirs(os.path.dirname(RESULTS), exist_ok=True)
+    os.makedirs(os.path.dirname(PATH_RESULTS), exist_ok=True)
 
     for env_name in [ENVS[e] for e in envs or ENVS]:
         hp = PARAMS[env_name]
@@ -34,19 +41,17 @@ def main(envs):
 
             args = (key_init, hp['num_hidden'], *samples, mask)
             initializers = [
-                RandomInitializer(*args),
+                Random_Init(*args),
                 TDec_Init(*args),
-                #*[ValuesInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                #*[SobolevInitializer(*args, steps) for steps in PRETRAIN_STEPS],
-                ValuesHeldoutInitializer(*args),
-                SobolevHeldoutInitializer(*args),
+                #ValuesHeldoutInitializer(*args),
+                Sobolev_Init(*args),
             ]
 
             # same algorithm key for all so that episodes start from same states
-            runs = [('oracle', Oracle, OraclePlanner, RandomInitializer(*args))] + [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
+            runs = [('oracle', Oracle, OraclePlanner, Random_Init(*args))] + [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
 
             # a rerun replaces the rows of these inits for this env and seed, the others are kept
-            clear_rows(RESULTS, COLUMNS, env_name, seed, [name for name, *_ in runs])
+            clear_rows(PATH_RESULTS, COLUMNS, env_name, seed, [name for name, *_ in runs])
 
             for name, Algorithm, Planner, initializer in runs:
                 print(f'{env_name} seed {seed} {name}')
@@ -55,21 +60,17 @@ def main(envs):
                     env, key_algorithm, initializer,
                     Planner(hp['num_candidates'], hp['horizon']),
                     params=env_params,
-                    train_steps=hp['train_steps'],
-                    patience=hp['patience'],
-                    eval_every=hp['eval_every'],
                 )
 
-                # the decoupling fails when the rank is too high for the samples, the run is skipped and has no rows
                 try: algorithm = make(initializer)
                 except Exception as e:
-                    if not isinstance(initializer, TDec_Init): raise
+                    assert isinstance(initializer, TDec_Init)
                     print(f'{name} failed, skipping: {e}')
                     continue
 
                 returns, losses = algorithm.run(hp['num_episodes'])
 
-                with open(RESULTS, 'a', newline='') as f:
+                with open(PATH_RESULTS, 'a', newline='') as f:
                     steps = getattr(algorithm, 'trained_steps', []) or [''] * len(returns)
                     csv.writer(f).writerows([env_name, seed, name, episode, r, l, s] for episode, (r, l, s) in enumerate(zip(returns, losses, steps)))
 

@@ -1,4 +1,5 @@
 import os, sys
+from itertools import groupby
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -24,20 +25,6 @@ def report_missing(df, group: list):
     missing = runs[runs < seeds.reindex(runs.index.get_level_values('env')).to_numpy()]
     if len(missing): print('runs with missing seeds (number of seeds left):', missing.to_string(), sep='\n')
 
-def best_of(df, group: list, metric: str, agg: str = 'median', higher: bool = False):
-    '''the rows of the best variant of each method of BEST_OF per group (by the agg of metric), renamed to the method'''
-    out = [df[~df.init.isin(sum(BEST_OF.values(), []))]]
-    for method, variants in BEST_OF.items():
-        rows = df[df.init.isin(variants)]
-        if rows.empty: continue
-        # a group without any value, e.g. a ratio without an oracle run, has no best variant and is left out
-        score = rows.groupby(group + ['init'])[metric].agg(agg).dropna()
-        if score.empty: continue
-        best = pd.DataFrame((score.groupby(group).idxmax() if higher else score.groupby(group).idxmin()).tolist(), columns=group + ['init'])
-        print(f'best {method} for {metric}:', best.groupby(group[:-1] or group).init.agg(' '.join).to_string(), sep='\n')
-        out.append(rows.merge(best).assign(init=method))
-    return pd.concat(out)
-
 def paper_line(ax, groups, init: str, label: str):
     '''median line and interquartile band of the grouped values of an initialization, nothing if it has no runs'''
     if groups.ngroups == 0: return
@@ -59,21 +46,29 @@ def sans_fonts():
     installed = {font.name for font in font_manager.fontManager.ttflist}
     return [font for font in SANS_FONTS if font in installed] or ['sans-serif']
 
+def paper_rc():
+    '''the style of the paper figures, in the installed fonts of SANS_FONTS'''
+    plt.rcParams.update({**PAPER_RC, 'font.sans-serif': sans_fonts()})
+
 def paper_legend(fig, handles, labels):
-    '''one legend above the plots, the method names of SANS in sans serif and of SMALLCAPS in small caps'''
+    '''one legend above the plots, the labels of SANS in sans serif, the others in small caps as \\textsc in the paper'''
     legend = fig.legend(handles, labels, loc='upper center', ncol=len(labels), frameon=False, bbox_to_anchor=(0.5, 1.0))
     for text in legend.get_texts():
         if text.get_text() in SANS: text.set_fontfamily(sans_fonts())
 
-    # matplotlib has no small caps: the first letter at full size, the others in capitals at 80%, on the same baseline
+    # matplotlib has no small caps: the capitals at full size, the lowercase letters as capitals at 80%, on the same baseline
+    # all the labels but those of SANS, which keep their font
     size = plt.rcParams['legend.fontsize']
     for column in legend._legend_handle_box.get_children():
         for item in column.get_children():
             handle, label = item.get_children()
-            if label.get_text() not in SMALLCAPS: continue
-            word = label.get_text()
-            item._children[1] = HPacker(pad=0, sep=0, align='baseline', children=[
-                TextArea(word[0], textprops=dict(fontsize=size)), TextArea(word[1:].upper(), textprops=dict(fontsize=0.8 * size))])
+            if label.get_text() in SANS: continue
+            runs = groupby(label.get_text(), key=lambda c: not c.islower())
+            packer = HPacker(pad=0, sep=0, align='baseline', children=[
+                TextArea(''.join(chars).upper(), textprops=dict(fontsize=size if capital else 0.8 * size)) for capital, chars in runs])
+            # the new texts must know the figure to be measured
+            packer.set_figure(fig)
+            item._children[1] = packer
 
 def paper_save(fig, name: str, output: str = OUTPUT):
     '''save a paper figure as pdf and png'''
@@ -87,22 +82,21 @@ def paper_save(fig, name: str, output: str = OUTPUT):
 
 def paper(df):
     '''the error of the models at initialization against N, envs as columns, the metrics of METRICS as rows'''
-    plt.rcParams.update(PAPER_RC)
+    paper_rc()
     Ns = sorted(df.N.unique())
 
-    fig, axes = plt.subplots(len(METRICS), len(PAPER_ENVS), figsize=(TEXT_WIDTH, 3.6), sharex=True, squeeze=False)
+    fig, axes = plt.subplots(len(METRICS), len(PAPER_ENVS), figsize=(TEXT_WIDTH, 2.6), sharex=True, squeeze=False)
     for row, (metric, name) in enumerate(METRICS.items()):
-        # the best variant of each method for this metric
-        best = best_of(df, ['env', 'N'], metric)
         for col, env in enumerate(PAPER_ENVS):
             ax = axes[row, col]
             for init, label in PAPER_INITS.items():
-                paper_line(ax, best[(best.env == env) & (best.init == init)].groupby('N')[metric], init, label)
+                paper_line(ax, df[(df.env == env) & (df.init == init)].groupby('N')[metric], init, label)
             ax.set(xscale='log', yscale='log')
-            ax.set_xticks(Ns, ['' if n == 200 and 100 in Ns else str(n) for n in Ns]) # no room for 200 next to 100
+            ax.set_xticks(Ns, [str(n) for n in Ns])
+            ax.tick_params(axis='x', labelsize=6) # smaller than the y labels, so that 250 fits between 100 and 500
             ax.minorticks_off()
             ax.yaxis.set_major_locator(plt.LogLocator(numticks=5))
-            ax.grid(True, color='#e6e5e0', linewidth=0.5)
+            ax.grid(True, color=GRID_COLOR, linewidth=0.5)
             ax.tick_params(length=2, pad=1.5)
             if row == 0: ax.set_title(ENV_LABELS[env])
             if row == len(METRICS) - 1: ax.set_xlabel('$N$', labelpad=1)
@@ -110,7 +104,7 @@ def paper(df):
 
     paper_legend(fig, *legend_entries(fig))
     sns.despine(fig)
-    fig.tight_layout(rect=(0, 0, 1, 0.965), h_pad=0.4, w_pad=0.4)
+    fig.tight_layout(rect=(0, 0, 1, 0.955), h_pad=0.4, w_pad=0.4)
 
     paper_save(fig, 'paper_init')
 

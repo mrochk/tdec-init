@@ -2,27 +2,19 @@ import csv, os
 
 DEFAULT_HORIZON = 20
 DEFAULT_EPISODES = 10
-DEFAULT_TRAIN_STEPS = 10_000 # at most, between episodes
-DEFAULT_PATIENCE = 500 # steps without improvement of the held-out loss before stopping
-DEFAULT_EVAL_EVERY = 25 # steps between the checks of the held-out loss, the resolution of the stopping step
 DEFAULT_CANDIDATES = 1000
 DEFAULT_NUM_ENVS_COLLECT = 5
 DEFAULT_NUM_STEPS_COLLECT = 10
 
+SEED = 42
+
 def make_params(dictionary):
     if (k := 'horizon') not in dictionary: dictionary[k] = DEFAULT_HORIZON
-    if (k := 'train_steps') not in dictionary: dictionary[k] = DEFAULT_TRAIN_STEPS
-    if (k := 'patience') not in dictionary: dictionary[k] = DEFAULT_PATIENCE
-    if (k := 'eval_every') not in dictionary: dictionary[k] = DEFAULT_EVAL_EVERY
     if (k := 'num_episodes') not in dictionary: dictionary[k] = DEFAULT_EPISODES
     if (k := 'num_candidates') not in dictionary: dictionary[k] = DEFAULT_CANDIDATES
     if (k := 'num_envs_collect') not in dictionary: dictionary[k] = DEFAULT_NUM_ENVS_COLLECT
     if (k := 'num_steps_collect') not in dictionary: dictionary[k] = DEFAULT_NUM_STEPS_COLLECT
     return dictionary
-
-SEED = 42
-
-PRETRAIN_STEPS = [10000]
 
 ENVS = {
     'reacher': 'Reacher-misc',
@@ -62,7 +54,7 @@ PARAMS = {
     # return negative until the goal then +100 when crossing the line
     'AcrobotContinuous-v0': make_params({
         'env_params': {'dense_reward': True},
-        'num_hidden': 24,
+        'num_hidden': 12,
     }),
 
     # return at most 200
@@ -92,22 +84,22 @@ PAPER_ENVS = list(ENV_LABELS)
 METRICS = {
     'onestep': 'one-step error',
     'jacobian': 'Jacobian error',
-    'rollout': 'rollout error',
 }
 
-COLORS = {'random': '#8a8984', 'decoupling': '#2a78d6', 'values': '#eb6834', 'sobolev': '#1baf7a'}
+# keyed by the init names of the results, the held-out pretrainings are the values and sobolev baselines
+# from the palette of the other figures of the paper (colors.txt), the bands are the lines at 15% opacity
+COLORS = {'random': '#8C8C8C', 'decoupling': '#4B7BBE', 'values-heldout': '#CC5555', 'sobolev-heldout': '#3A8A84'}
+ORACLE_COLOR = '#1D1D1D'
+GRID_COLOR = '#E8E8E8'
 
-PAPER_INITS = {'random': 'random', 'values': 'values', 'sobolev': 'sobolev', 'decoupling': 'TDec-Init'}
-# the pretraining variants run by the experiments, the paper shows the best one of each method
-BEST_OF = {method: [*(f'{method}-{steps}' for steps in PRETRAIN_STEPS), f'{method}-heldout'] for method in ('values', 'sobolev')}
+PAPER_INITS = {'random': 'Random', 'values-heldout': 'Values', 'sobolev-heldout': 'Sobolev', 'decoupling': 'TDec-Init'}
 SANS = {'TDec-Init'} # labels in sans serif, as \textsf in the paper
 SANS_FONTS = ['Helvetica', 'Nimbus Sans', 'TeX Gyre Heros', 'Arial', 'DejaVu Sans'] # helvetica or a clone, as \textsf next to times
-SMALLCAPS = {'Sobolev'} # labels in small caps, as \textsc in the paper
 TEXT_WIDTH = 7.0 # inches, both columns of the ifac format (figure*), a column is 3.4
-PAPER_STYLE = {'random': ('', 'o'), 'values': ((4, 2), 's'), 'sobolev': ((1, 1.5), '^'), 'decoupling': ('', 'D')}
+PAPER_STYLE = {'random': ('', 'o'), 'values-heldout': ((4, 2), 's'), 'sobolev-heldout': ((1, 1.5), '^'), 'decoupling': ('', 'D')}
 
 PAPER_RC = {
-    'font.family': 'serif', 'font.serif': ['STIXGeneral'], 'mathtext.fontset': 'stix', # times, as the ifac format
+    'font.family': 'sans-serif', 'mathtext.fontset': 'stixsans', # the fonts of SANS_FONTS, set by the plots to the installed ones
     'font.size': 8, 'axes.titlesize': 8, 'axes.labelsize': 8, 'xtick.labelsize': 7, 'ytick.labelsize': 7, 'legend.fontsize': 8,
     'axes.linewidth': 0.6, 'xtick.major.width': 0.6, 'ytick.major.width': 0.6, 'pdf.fonttype': 42,
 }
