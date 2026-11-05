@@ -52,7 +52,7 @@ def paper(df):
     # only the trainings between the episodes, the pretraining of the values and sobolev inits is left out on purpose
     totals = steps.groupby(['env', 'seed', 'init'], as_index=False).train_steps.sum()
 
-    fig, axes = plt.subplots(2, len(PAPER_ENVS), figsize=(TEXT_WIDTH, 3.0), squeeze=False, gridspec_kw=dict(height_ratios=[1.4, 1]))
+    fig, axes = plt.subplots(2, len(PAPER_ENVS), figsize=(TEXT_WIDTH, 2.8), squeeze=False)
     for col, env in enumerate(PAPER_ENVS):
         top, bottom = axes[0, col], axes[1, col]
 
@@ -75,7 +75,7 @@ def paper(df):
             ax.tick_params(length=2, pad=1.5)
         top.grid(True, axis='x', color=GRID_COLOR, linewidth=0.5)
 
-    axes[0, 0].set_ylabel('return relative to oracle')
+    axes[0, 0].set_ylabel('return relative\nto oracle')
     axes[1, 0].set_ylabel('gradient steps')
 
     # the oracle last in the legend
@@ -83,6 +83,6 @@ def paper(df):
     paper_legend(fig, handles[1:] + handles[:1], labels[1:] + labels[:1])
     sns.despine(fig)
     fig.tight_layout(rect=(0, 0, 1, 0.93), h_pad=0.6, w_pad=0.6)
-    paper_save(fig, 'paper_mbrl_ratio', OUTPUT)
+    paper_save(fig, 'paper_mbrl', OUTPUT)
 
 if __name__ == '__main__': main()
