@@ -79,6 +79,6 @@ def paper(df):
     paper_legend(fig, handles[1:] + handles[:1], labels[1:] + labels[:1])
     sns.despine(fig)
     fig.tight_layout(rect=(0, 0, 1, 0.93), h_pad=0.6, w_pad=0.6)
-    paper_save(fig, 'paper_mbrl', OUTPUT)
+    paper_save(fig, 'closed_loop', OUTPUT)
 
 if __name__ == '__main__': main()

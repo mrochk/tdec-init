@@ -106,6 +106,6 @@ def paper(df):
     sns.despine(fig)
     fig.tight_layout(rect=(0, 0, 1, 0.955), h_pad=0.4, w_pad=0.4)
 
-    paper_save(fig, 'paper_init')
+    paper_save(fig, 'identification')
 
 if __name__ == '__main__': main()
