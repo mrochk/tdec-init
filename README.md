@@ -1,5 +1,10 @@
 # TDec-Init
-Warm starting neural dynamics models from few Jacobian samples.
+
+**Warm Starting Neural Dynamics Models From Few Jacobian Samples**
+
+*Maxime Rochkoulets, Joppe De Jonghe, Mariya Ishteva*
+
+<br>
 
 <img src="image.png">
 
