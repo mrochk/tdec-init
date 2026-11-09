@@ -66,11 +66,6 @@ class TDec_Init(Initializer):
         return MLP(W0, W1, internals, scale, self.angles_mask)
 
 class Values_Init(Initializer):
-    '''
-    random initialization, then pretraining on the values of a part of the samples, checking the loss on the held-out
-    rest every `eval_every` steps, until it has not improved for `patience` steps or for at most `max_steps` steps,
-    the model with the lowest held-out loss is kept
-    '''
     name = 'values-heldout'
     loss = staticmethod(values_loss)
     validation = 0.2 # fraction of the samples held out, at least one

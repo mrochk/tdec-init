@@ -16,7 +16,7 @@ from tdec_init import (
 
 from config import ENVS, PARAMS, SEED, clear_rows
 
-SEEDS = range(1)
+SEEDS = range(5)
 
 PATH_RESULTS = Path(__file__).parent / 'results' / 'mbrl.csv'
 
@@ -43,14 +43,13 @@ def main(envs):
             initializers = [
                 Random_Init(*args),
                 TDec_Init(*args),
-                #ValuesHeldoutInitializer(*args),
+                Values_Init(*args),
                 Sobolev_Init(*args),
             ]
 
             # same algorithm key for all so that episodes start from same states
             runs = [('oracle', Oracle, OraclePlanner, Random_Init(*args))] + [(i.name, ModelBasedAlgorithm, RandomShootingPlanner, i) for i in initializers]
 
-            # a rerun replaces the rows of these inits for this env and seed, the others are kept
             clear_rows(PATH_RESULTS, COLUMNS, env_name, seed, [name for name, *_ in runs])
 
             for name, Algorithm, Planner, initializer in runs:

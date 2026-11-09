@@ -11,19 +11,17 @@ from tdec_init.utils import angle_mask, get_fields, state2vec, wrap_angles
 
 from config import ENVS, PARAMS, SEED, clear_rows
 
-SEEDS = range(1)
-NUM_ENVS = [2, 5, 10, 20, 50, 100]
+SEEDS = range(5)
+NUM_ENVS = [100]
 NUM_STEPS = 5
 
 NUM_TEST_ENVS, NUM_TEST_STEPS = 500, NUM_STEPS # one-step test set
 NUM_ROLLOUTS, ROLLOUT_HORIZON = 100, 20 # multi-step test set
 
 RESULTS = os.path.join(os.path.dirname(__file__), 'results', 'init.csv')
-# the errors of the models at initialization, pretrain_steps: the gradient steps of the pretraining, 0 without
 COLUMNS = ['env', 'seed', 'N', 'init', 'onestep', 'jacobian', 'rollout', 'pretrain_steps']
 
 def trajectories(env, params, fields, key, num: int, horizon: int):
-    '''random action trajectories from the initial states, without resets, returns the states (num, horizon + 1, n) and actions (num, horizon, k)'''
     action_space = env.action_space(params)
 
     def step(state, key):
@@ -42,7 +40,7 @@ def trajectories(env, params, fields, key, num: int, horizon: int):
 
 @eqx.filter_jit
 def evaluate(model, test, S, A, mask):
-    '''normalized errors of the one-step predictions, of their jacobians and of the rollouts'''
+    '''normalized errors of the one-step predictions of their jacobians and of the rollouts'''
     inputs, outputs, jacobians = test
 
     var = jnp.var(outputs, axis=0) + 1e-8
@@ -62,8 +60,11 @@ def evaluate(model, test, S, A, mask):
 
     return onestep, jacobian, rollout
 
+def make_initializers(*args):
+    return (Random_Init(*args), TDec_Init(*args), Values_Init(*args), Sobolev_Init(*args))
+
 @click.command()
-@click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False), help='env to run, repeat for several (default all)')
+@click.option('--env', '-e', 'envs', multiple=True, type=click.Choice(list(ENVS), case_sensitive=False))
 def main(envs):
     os.makedirs(os.path.dirname(RESULTS), exist_ok=True)
 
@@ -74,7 +75,6 @@ def main(envs):
         fields, mask = get_fields(env), angle_mask(env, params=env_params)
 
         for seed in SEEDS:
-            # a rerun replaces the rows of this env and seed, the others are kept
             clear_rows(RESULTS, COLUMNS, env_name, seed)
             key_train, key_test, key_rollouts, key_init = jax.random.split(jax.random.fold_in(jax.random.key(SEED), seed), 4)
 
@@ -87,12 +87,8 @@ def main(envs):
                 N = samples[0].shape[0]
 
                 args = (key_init, hp['num_hidden'], *samples, mask)
-                initializers = [
-                    Random_Init(*args),
-                    TDec_Init(*args),
-                    #ValuesHeldoutInitializer(*args),
-                    Sobolev_Init(*args),
-                ]
+
+                initializers = make_initializers(*args)
 
                 for initializer in initializers:
                     try: model = initializer.initialize()

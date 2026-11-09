@@ -15,6 +15,8 @@ def cmtf_bsd(
 ) -> Decoupling:
 
     scaler = JacobianScaler(jacobians)
+    print(scaler.scaling_factors)
+    #exit()
     jacobians, outputs = scaler.scale(jacobians, outputs)
 
     algorithm = Algorithm(rank, key, niters, ninits, splines_dof=splines_dof, use_smoothing=False, show_progress=True)

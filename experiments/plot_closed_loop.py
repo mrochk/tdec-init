@@ -41,10 +41,6 @@ def paper_bars(ax, totals: pd.DataFrame):
     ax.set_xlim(-0.6, max(len(inits), 1) - 0.4)
 
 def paper(df):
-    '''
-    the paper figure, envs as columns, at the text width: the ratio to the oracle against the episode, and below the
-    total gradient steps of the trainings between the episodes, each until the held-out loss stopped improving
-    '''
     paper_rc()
     episodes = sorted(df.episode.unique())
     # the rows of the runs before the column existed have no steps
