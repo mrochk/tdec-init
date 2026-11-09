@@ -25,10 +25,6 @@ ENVS = {
 }
 
 def clear_rows(path: str, columns: list, env: str, seed: int, inits: list | None = None):
-    '''
-    remove the rows of env and seed, only of the inits given if any, so that a rerun replaces them and keeps the others
-    the file is rewritten with `columns`, the old rows get an empty value in the columns they did not have
-    '''
     rows = []
     if os.path.exists(path):
         with open(path, newline='') as f: rows = list(csv.DictReader(f))
@@ -69,9 +65,6 @@ PARAMS = {
     'Reacher-misc': make_params({'num_hidden': 4}),
 }
 
-# plotting, the paper figures
-
-# env titles, in the order of the columns of the paper figures
 ENV_LABELS = {
     'Reacher-misc': 'Reacher',
     'Pendulum-v1': 'Pendulum',
@@ -86,20 +79,18 @@ METRICS = {
     'jacobian': 'Jacobian error',
 }
 
-# keyed by the init names of the results, the held-out pretrainings are the values and sobolev baselines
-# from the palette of the other figures of the paper (colors.txt), the bands are the lines at 15% opacity
 COLORS = {'random': '#8C8C8C', 'decoupling': '#4B7BBE', 'values-heldout': '#CC5555', 'sobolev-heldout': '#3A8A84'}
 ORACLE_COLOR = '#1D1D1D'
 GRID_COLOR = '#E8E8E8'
 
 PAPER_INITS = {'random': 'Random', 'values-heldout': 'Values', 'sobolev-heldout': 'Sobolev', 'decoupling': 'TDec-Init'}
-SANS = {'TDec-Init'} # labels in sans serif, as \textsf in the paper
-SANS_FONTS = ['Helvetica', 'Nimbus Sans', 'TeX Gyre Heros', 'Arial', 'DejaVu Sans'] # helvetica or a clone, as \textsf next to times
-TEXT_WIDTH = 7.0 # inches, both columns of the ifac format (figure*), a column is 3.4
+SANS = {'TDec-Init'}
+SANS_FONTS = ['Helvetica', 'Nimbus Sans', 'TeX Gyre Heros', 'Arial', 'DejaVu Sans']
+TEXT_WIDTH = 7.0
 PAPER_STYLE = {'random': ('', 'o'), 'values-heldout': ((4, 2), 's'), 'sobolev-heldout': ((1, 1.5), '^'), 'decoupling': ('', 'D')}
 
 PAPER_RC = {
-    'font.family': 'sans-serif', 'mathtext.fontset': 'stixsans', # the fonts of SANS_FONTS, set by the plots to the installed ones
+    'font.family': 'sans-serif', 'mathtext.fontset': 'stixsans',
     'font.size': 8, 'axes.titlesize': 8, 'axes.labelsize': 8, 'xtick.labelsize': 7, 'ytick.labelsize': 7, 'legend.fontsize': 8,
     'axes.linewidth': 0.6, 'xtick.major.width': 0.6, 'ytick.major.width': 0.6, 'pdf.fonttype': 42,
 }
