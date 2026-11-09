@@ -12,7 +12,7 @@ from tdec_init.utils import angle_mask, get_fields, state2vec, wrap_angles
 from config import ENVS, PARAMS, SEED, clear_rows
 
 SEEDS = range(5)
-NUM_ENVS = [100]
+NUM_ENVS = [2, 5, 10, 20, 50, 100]
 NUM_STEPS = 5
 
 NUM_TEST_ENVS, NUM_TEST_STEPS = 500, NUM_STEPS # one-step test set
